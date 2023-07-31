@@ -1,0 +1,98 @@
+---
+- name: DNSEXIT Updates via API
+  hosts: localhost
+  gather_facts: false
+  vars:
+    # General API Endpoint
+    dnsexit_api: "https://api.dnsexit.com/dns/"
+    # API endpoint only for updating dynamic host records
+    dnsexit_api_dynamic_endpoint: "ud/"
+    dnsexit_apikey: ""
+    dnsexit_domain: ""
+    lets_encrypt_txt: ""
+
+  tasks:
+    - name: Update DNSEXIT Dynamic Host Record
+      tags:
+        - ip_only
+      block:
+        # I am using the domain A record.  However host can be a comma separated list
+        # of dynamic host fqdn's.
+        - name: Update DNSEXIT Dynamic Host Record
+          ansible.builtin.uri:
+            url: "{{ dnsexit_api }}{{ dnsexit_api_dynamic_endpoint }}"
+            method: POST
+            body_format: form-urlencoded
+            body:
+              apikey: "{{ dnsexit_apikey }}"
+              host: "{{ dnsexit_domain }}"
+            return_content: true
+          register: ip_update_result
+
+        - name: Generate IP Update Log Line
+          ansible.builtin.set_fact:
+            ip_update_log: >
+              {{ (ip_update_result.date
+              | to_datetime('%a, %d %b %Y %H:%M:%S %Z')).strftime('%Y-%m-%d %H:%M:%S')
+              + ' GMT '
+              + ip_update_result.json.message }}
+
+        - name: Show IP Update Log Line
+          ansible.builtin.debug:
+            var: ip_update_log
+
+        - name: Create IP Update Log File Entry
+          ansible.builtin.lineinfile:
+            path: ~/ansible_dnsexit.log
+            line: "{{ ip_update_log }}"
+            mode: '0640'
+            create: true
+
+    - name: Update DNSEXIT TXT Record
+      tags:
+        - txt_only
+      block:
+        - name: Update DNSEXIT Dynamic TXT Record
+          ansible.builtin.uri:
+            url: "{{ dnsexit_api }}"
+            method: POST
+            body_format: json
+            body:
+              apikey: "{{ dnsexit_apikey }}"
+              domain: "{{ dnsexit_domain }}"
+              update:
+                - type: TXT
+                  name: _acme-challenge
+                  content: "{{ lets_encrypt_txt }}"
+                  ttl: 0
+                  overwrite: true
+            return_content: true
+          register: txt_update_result
+
+        - name: Initialize txt_update_log list
+          ansible.builtin.set_fact:
+            txt_update_log: []
+
+        - name: Generate IP Update Log Line
+          ansible.builtin.set_fact:
+            txt_update_log: >
+              {{ txt_update_log + [(txt_update_result.date
+              | to_datetime('%a, %d %b %Y %H:%M:%S %Z')).strftime('%Y-%m-%d %H:%M:%S')
+              + ' GMT '
+              + txt_update_result.json.message
+              + ' '
+              + item] }}
+          loop: "{{ txt_update_result.json.details }}"
+
+        - name: Show TXT Update
+          ansible.builtin.debug:
+            var: item
+          loop: "{{ txt_update_log }}"
+
+        - name: Create TXT Update Log File Entry
+          ansible.builtin.lineinfile:
+            path: ~/ansible_dnsexit.log
+            line: "{{ item }}"
+            mode: '0640'
+            create: true
+          loop: "{{ txt_update_log }}"
