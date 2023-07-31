@@ -1,4 +1,6 @@
 ---
+# DNSEXIT API documentation can be found at
+# https://dnsexit.com/dns/dns-api/
 - name: DNSEXIT Updates via API
   hosts: localhost
   gather_facts: false
@@ -52,6 +54,9 @@
       tags:
         - txt_only
       block:
+        # I am only updating a single DNS TXT record; however you can create update,
+        # add, and delete lists of dictionaries in the body, where each dictionary
+        # item is a separate record to maintain.
         - name: Update DNSEXIT Dynamic TXT Record
           ansible.builtin.uri:
             url: "{{ dnsexit_api }}"
